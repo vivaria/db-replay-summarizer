@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>DuelingBook Replay Summarizer</title>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+  <style>
+    body { font-family: monospace; background: #fafafa; padding: 20px; }
+    pre { background: #f0f0f0; padding: 10px; border-radius: 8px; white-space: pre-wrap; }
+    .red { color: red; }
+    .blue { color: blue; }
+    .green { color: green; }
+    .yellow { color: goldenrod; }
+  </style>
+</head>
+<body>
+  <h1>DuelingBook Replay Summarizer</h1>
+  <input type="file" id="fileInput" accept=".json" multiple>
+  <pre id="output"></pre>
+
+  <script>
+    async function main() {
+      const pyodide = await loadPyodide();
+      const fileInput = document.getElementById("fileInput");
+      const output = document.getElementById("output");
+
+      // Python script adapted to HTML color spans
+      await pyodide.runPythonAsync(`
+import json, re
+
+# Map ANSI colors to HTML span classes
+ansi_to_html = {
+    "\\033[31m": "<span class='red'>",
+    "\\033[34m": "<span class='blue'>",
+    "\\033[32m": "<span class='green'>",
+    "\\033[33m": "<span class='yellow'>",
+}
+reset_code = "\\033[0m"
+
+def colorize(text):
+    for ansi, html in ansi_to_html.items():
+        text = text.replace(ansi, html)
+    text = text.replace(reset_code, "</span>")
+    return text
+
+def flush_log(current_message, current_log_player, current_phase, max_len, player_colors, player_lp, log_lines):
+    if current_log_player not in player_colors:
+        pass
+    elif current_log_player and current_message:
+        color_span = ansi_to_html.get(player_colors[current_log_player], "")
+        player_str = f"{current_log_player:<{max_len}}"
+        lp_str = f"({player_lp[current_log_player]})"
+        lp_str = f"{lp_str:>{len(' (10000)')}}"
+        cleaned = re.sub(r' \\(\\d+/\\d+\\)| (?:from|in|to) [MS]-\\d', '', current_message)
+        message_list = cleaned.split(" | ")
+        for i, message in enumerate(message_list[1:]):
+            prefix = f"  - [{current_phase}] {color_span}{player_str+lp_str}</span>"
+            if i != 0:
+                prefix = " " * (len(prefix) - len(color_span+"</span>"))
+            log_lines.append(f"{prefix} - {message}")
+        current_message = ""
+    return current_message
+
+def summarize_replay_data(data):
+    players = []
+    player_colors = {}
+    player_lp = {}
+    ansi_colors = ["\\033[31m", "\\033[34m", "\\033[32m", "\\033[33m"]
+
+    for n in [1, 2, 3, 4]:
+        player = data.get(f"player{n}")
+        if player:
+            username = player.get("username", None)
+            if username:
+                players.append(username)
+                player_colors[username] = ansi_colors[n-1]
+                player_lp[username] = 8000
+
+    if not players:
+        return "No players found in replay."
+
+    max_len = max(len(player) for player in players)
+    plays = data.get("plays")
+    if not plays:
+        return "No plays found in the replay."
+
+    if isinstance(plays, str):
+        try:
+            plays = json.loads(plays)
+        except json.JSONDecodeError:
+            return "Error: 'plays' field is not valid JSON."
+
+    plays_to_exclude = ["Duel message", "RPS", "End turn", "Left duel", "Siding",
+                        "Done siding", "Begin next duel", "Add watcher", "Remove watcher",
+                        "Shuffle hand", "Shuffle deck", "Good", "Stop good", "Thinking",
+                        "View deck", "View ED", "View ED 2", "View GY", "View GY 2", "Stop viewing"]
+
+    game_counter = 0
+    turn_counter = 0
+    current_phase = ""
+    current_log_player = ""
+    current_message = ""
+    log_lines = []
+
+    for play in plays:
+        action = play.get("play", "")
+        if action in plays_to_exclude:
+            continue
+
+        player = play.get("username")
+        if not player:
+            continue
+        turn_player = player
+
+        if action == "Pick first":
+            log_lines.append(f"\\n\\nGame {game_counter}")
+            log_lines.append("------")
+            log_lines.append("Starting game...")
+            game_counter += 1
+            player_lp = {p: 8000 for p in player_lp.keys()}
+            turn_counter = 0
+            current_phase = "DP"
+
+        if action == "Start turn":
+            current_message = flush_log(current_message, current_log_player, current_phase, max_len, player_colors, player_lp, log_lines)
+            turn_counter += 1
+            current_phase = "DP"
+            log_lines.append(f"\\nTurn {turn_counter} ({turn_player})")
+            continue
+
+        if action.startswith("Enter "):
+            current_message = flush_log(current_message, current_log_player, current_phase, max_len, player_colors, player_lp, log_lines)
+            current_phase = action[6:]
+            continue
+
+        if action == "Life points":
+            player_lp[play.get("username")] = play.get("life")
+            continue
+
+        log = play.get("log", {})
+        log = log if isinstance(log, list) else [log]
+        for log_entry in log:
+            log_player = log_entry.get("username", turn_player)
+            if log_player != current_log_player:
+                current_message = flush_log(current_message, current_log_player, current_phase, max_len, player_colors, player_lp, log_lines)
+                current_log_player = log_player
+            private_log = log_entry.get("private_log")
+            public_log = log_entry.get("public_log")
+            message = private_log or public_log or None
+            if not message:
+                continue
+            current_message += f" | {message}"
+
+        if action == "Pick first":
+            current_message = flush_log(current_message, current_log_player, current_phase, max_len, player_colors, player_lp, log_lines)
+            turn_counter += 1
+            log_lines.append(f"\\nTurn {turn_counter} ({turn_player})")
+
+    return "<br>".join(colorize(line) for line in log_lines)
+      `);
+
+      fileInput.addEventListener("change", async (event) => {
+        output.innerHTML = "";
+        for (const file of event.target.files) {
+          const jsonText = await file.text();
+          pyodide.globals.set("json_text", jsonText);
+          const result = await pyodide.runPythonAsync(`
+import json
+data = json.loads(json_text)
+summarize_replay_data(data)
+          `);
+          output.innerHTML += `<strong>${file.name}</strong>\n${result}\n\n`;
+        }
+      });
+    }
+    main();
+  </script>
+</body>
+</html>

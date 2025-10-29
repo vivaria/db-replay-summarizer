@@ -15,6 +15,19 @@
 </head>
 <body>
   <h1>DuelingBook Replay Summarizer</h1>
+  
+  <h2>Instructions</h2>
+  <p>
+    <ul>
+      <li>Download and install TamperMonkey for your browser (making sure to enable user scripts in the extension's settings).</li>
+      <li>Navigate to https://github.com/vivaria/db_scripts/raw/refs/heads/main/tampermonkey/download_replay_json.user.js. TamperMonkey should prompt you to install the user script.</li>
+      <li>(Optional). The userscript contains a setting called `AUTO_DOWNLOAD`. If you replace "false" with "true", it will automatically download the JSON every time you open a replay. This can save you from having to press the button, but will probably clutter your downloads folder.</li>
+      <li>Open a replay. It should now contain a button that lets you download the replay's JSON data.</li>
+      <li>Click on the "Choose Files" picker below, then select the JSON file you just downloaded. Enjoy!</li>
+    </ul>
+  </p>
+
+  <h2>Parser</h2>
   <input type="file" id="fileInput" accept=".json" multiple>
   <pre id="output"></pre>
 

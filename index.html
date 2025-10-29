@@ -126,10 +126,12 @@ def summarize_replay_data(data):
         turn_player = player
 
         if action == "Pick first":
+            if game_counter > 0: 
+                current_message = flush_log(current_message, current_log_player, current_phase, max_len, player_colors, player_lp, log_lines)
+            game_counter += 1
             log_lines.append(f"\\n\\nGame {game_counter}")
             log_lines.append("------")
             log_lines.append("Starting game...")
-            game_counter += 1
             player_lp = {p: 8000 for p in player_lp.keys()}
             turn_counter = 0
             current_phase = "DP"

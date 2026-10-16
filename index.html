@@ -103,9 +103,9 @@ def summarize_replay_data(data):
         except json.JSONDecodeError:
             return "Error: 'plays' field is not valid JSON."
 
-    plays_to_exclude = ["Duel message", "RPS", "End turn", "Left duel", "Siding",
+    plays_to_exclude = ["RPS", "End turn", "Left duel", "Siding",
                         "Done siding", "Begin next duel", "Add watcher", "Remove watcher",
-                        "Shuffle hand", "Shuffle deck", "Good", "Stop good", "Thinking",
+                        "Shuffle hand", "Shuffle deck",
                         "View deck", "View ED", "View ED 2", "View GY", "View GY 2", "Stop viewing"]
 
     game_counter = 0
